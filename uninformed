@@ -1,0 +1,1075 @@
+# coding_manuscript2
+# example of code with informed movement
+# P=0.90 and H=1
+#Python version 3.4.3
+
+# -*- coding: utf-8 -*-
+"""
+Created on Fri Apr  1 15:40:42 2016
+
+@author: jrhillae
+"""
+import itertools
+import numpy as np
+import scipy.stats as sp
+import random as rnd
+import math 
+import matplotlib
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt
+import sys
+import timeit
+
+class Write_Weights:
+    
+    def __init__(self,
+                 Title,
+                 Number,
+                 sample_ind):
+        
+        self.sample_weights = open((str(Number) + 'Sample_weights' + Title + '.txt'), 'w')
+        
+        self.sample_weights.write('%20s'%'AdultWeights [kg]'+ '\n')
+        
+        for a in sample_ind:
+            self.sample_weights.write('%20s'%str(a.AdultWeight) + '\n')
+            
+        #closing file                   
+        self.sample_weights.close()
+        
+        
+class Write_Files:
+    
+    def __init__(self,
+                 Title,
+                 Summary,
+                 sample_ind,
+                 ResDist,
+                 ConDist,
+                 landscape,
+                 grid,
+                 Variability,
+                 Locations,
+                 Fst,
+                 O):
+        '''Writing out the values within summary into text files'''
+        #create output file for the summary values
+        self.summary = open('Summary' + Title + '.txt', 'w')
+        self.sample_weights = open('Sample_weights' + Title + '.txt', 'w')
+        self.cell_specific_data= open ('Cell_specific_data' + Title + '.txt', 'w')
+        self.variability=open('Variability'+Title+'.txt', 'w')
+        self.locations=open('Locations_' + Title + '.txt', 'w')
+        self.fst=open('Fst_'+ Title + '.txt', 'w')
+        
+        
+        #headings        
+        self.summary.write('%20s'%'Time' + '\t'+ \
+                           '%20s'%'MeanR[J/cell]' + '\t'+ \
+                           '%20s'%'VarR' + '\t'+ \
+                           '%20s'%'TotalAmountR'+'\t'+ \
+                           '%20s'%'TotalAdults'+'\t'+\
+                           '%20s'%'TotalLarvae'+'\t'+ \
+                           '%20s'% 'AWeightAverage[kg]'+'\t'+ \
+                           '%20s'% 'AWeightVariance'+'\t'+ \
+                           '%20s'% 'AWeightSkewness'+'\t'+ \
+                           '%20s'% 'AWeightKurtosis'+'\t'+ \
+                           '%20s'% 'AWeightCV'+'\t'+ \
+                           '%20s'% 'AWeightLower[kg]'+'\t'+ \
+                           '%20s'% 'AWeightUpper[kg]'+'\n')
+                        
+        self.sample_weights.write('%20s'%'AdultWeights [kg]' + '%20s'%'CurrentWeights [kg]' + '\t' + '%20s'%'Neutral gene' +'\n')
+        self.cell_specific_data.write(self.Cell_specific_data(ResDist, ConDist, landscape, grid))
+        self.variability.write(self.Calculate_variability(Variability))
+        #writing out values in both files                   
+        for time in Summary['Time']:        
+            self.summary.write('%20s'%str(time) + '\t'+ \
+                        '%20s'%str(Summary['MeanR'][time]) + '\t'+ \
+                        '%20s'%str(Summary['VarR'][time]) + '\t'+ \
+                        '%20s'%str(Summary['TotalAmountR'][time])+'\t'+ \
+                        '%20s'%str(Summary['TotalAdults'][time])+'\t'+\
+                        '%20s'%str(Summary['TotalLarvae'][time])+'\t'+ \
+                        '%20s'%str(Summary['AWeightAverage'][time])+'\t'\
+                        '%20s'%str(Summary['AWeightVariance'][time])+'\t'\
+                        '%20s'%str(Summary['AWeightSkewness'][time])+'\t'\
+                        '%20s'%str(Summary['AWeightKurtosis'][time])+'\t'\
+                        '%20s'%str(Summary['AWeightCV'][time])+'\t'\
+                        '%20s'%str(Summary['AWeightLower'][time])+'\t'\
+                        '%20s'%str(Summary['AWeightUpper'][time])+'\n')
+                        
+        for a in sample_ind:
+            self.sample_weights.write('%20s'%str(a.AdultWeight)+'\t'+'%20s'%str(a.Weight)+'\t'+'%20s'%str(a.neutral)+'\n')
+            
+        for item in Locations.keys(): 
+            self.locations.write(str(item))
+            for loc in Locations[item]:
+                self.locations.write(' '+ str(loc))
+            self.locations.write('\n')
+            
+        for item in Fst:    
+            self.fst.write(str(item)+'\t') 
+        self.fst.write('\n')
+        for item in O:
+            self.fst.write(str(item)+'\t')
+            
+        #closing files                   
+        self.summary.close()
+        self.sample_weights.close()
+        self.cell_specific_data.close()
+        self.variability.close()
+        self.locations.close()
+        self.fst.close()
+        
+    def Cell_specific_data(self, ResDist, ConDist, landscape, grid):
+        content= ''
+        content+='%20s'% 'y'+'\t'+ \
+                       '%20s'% 'x'+'\t'+ \
+                       '%20s'% 'Nind'+'\t'+ \
+                       '%20s'% 'MeanAW_cell'+'\t'+ \
+                       '%20s'% 'VarAW_cell'+'\t'+ \
+                       '%20s'% 'MeanCW_cell'+'\t'+ \
+                       '%20s'% 'VarCW_cell'+'\t'+ \
+                       '%20s'% 'Resources'+'\n'
+        for y in range (grid[0]):
+            for x in range (grid[1]):
+                if landscape[y,x]==1:
+                    Nind= (len(ConDist['Larvae'][y][x]) + len(ConDist['Adults'][y][x]))
+                    if Nind>0:
+                        Adult_weights= [ind.AdultWeight for stage in ConDist for ind in ConDist[stage][y][x]]
+                        Current_weights=[ind.Weight for stage in ConDist for ind in ConDist[stage][y][x]]
+                        MeanAW= np.mean(Adult_weights)
+                        VarAW= np.var(Adult_weights)
+                        MeanCW=np.mean(Current_weights)
+                        VarCW=np.var(Current_weights)
+                        R= ResDist[y,x]
+                    else: MeanAW, MeanCW, VarAW,VarCW, R= \
+                        'None', 'None','None','None', ResDist[y,x]
+                    
+                    content+='%20s'%str(y)+'\t'\
+                                '%20s'%str(x)+'\t'\
+                                '%20s'%str(Nind)+'\t'\
+                                '%20s'%str(MeanAW)+'\t'\
+                                '%20s'%str(VarAW)+'\t'\
+                                '%20s'%str(MeanCW)+'\t'\
+                                '%20s'%str(VarCW)+'\t'\
+                                '%20s'%str(R)+'\n'
+        return content         
+    
+    def Calculate_variability (self, Variability): 
+        a=np.cov(Variability)    
+        x=0
+        for i in range (len(Variability)):
+            x+=math.sqrt(a[i,i])
+        muM= sum([np.mean(b) for b in Variability])
+        alpha= (x/muM)**2
+      
+        y=0
+        for e in range (len(Variability)):
+            for f in range (len(Variability)):
+                y+=a[e,f] 
+        gamma= y/(muM**2)        
+        
+        beta1=alpha/gamma
+        beta2=alpha-gamma
+    
+        solution = '%20s'%str(alpha)+'\t'\
+                   '%20s'%str(beta1)+'\t'\
+                   '%20s'%str(beta2)+'\t'\
+                   '%20s'%str(gamma)
+                   
+        return solution
+    
+class Plot_Visual:
+    
+    def __init__(self, Title,
+                       summary,
+                       Maxtime,
+                       MaxAmountR,
+                       sample_ind):   
+        '''Creating plots with values of summary'''
+        #create 3 graphs in 1 image:
+        #Plot of the Amount of Resources
+        plt.figure(figsize=(10,10))
+        plt.subplot(311)
+        plt.ylabel('Average amount of resources')
+        plt.ylim((0, MaxAmountR))
+        plt.title('Resources')
+        plt.plot(summary['Time'],summary['MeanR'])
+        
+        #Plot of the amount of Adults and Larvae
+        plt.subplot(312)
+        plt.ylabel('Total number')
+        plt.title('Consumer')
+        plt.plot(summary['Time'], summary['TotalAdults'], 'b-', label= 'Adults')
+        plt.plot(summary['Time'], summary['TotalLarvae'], 'r-', label= 'Larvae')
+        lg1=plt.legend(loc='upper left')
+        lg1.draw_frame(False)
+        #PLot of the average weight of the Adults
+        plt.subplot(313)
+        plt.xlabel('Time')
+        plt.ylabel('Weight [kg]')
+        plt.title('Evolution of weight')
+        plt.plot(summary['Time'], summary['AWeightLower'], '--', color=(0.5,0.5,0.9))
+        plt.plot(summary['Time'], summary['AWeightUpper'], '--', color=(0.5,0.5,0.9))
+        plt.plot(summary['Time'], summary['AWeightAverage'], 'b-', label= 'AdultWeight')
+        lg2=plt.legend(loc='upper left')
+        lg2.draw_frame(False)
+        #Save the 3 graphs as 1 PNG file
+        plt.savefig(('FigurSummary' + Title + '.png'), bbox_edges='tight')
+        #Delete the active figure
+        #plt.clf()
+        
+        #Create a histogram of the weights of Adults in final population, and save it as a PNG file
+        if len(sample_ind)>0:
+            plt.figure()
+            plt.hist([ind.AdultWeight for ind in sample_ind], label=['AdultWeight'])
+            plt.xlabel('Weight [kg]')
+            plt.ylabel('Total number')
+            plt.title('Distribution of weight')
+            lg3=plt.legend(loc='upper right')
+            lg3.draw_frame(False)
+            plt.savefig(('Histogram' + Title + '.png'), bbox_edges='tight')
+            #Delete the active figure
+            #plt.clf()
+        #plt.show()
+ 
+        
+class ConInd:
+    def __init__(self,
+                 AdultWeight, #kg
+                 neutral,
+                 Gene_Fst,
+                 t,
+                 Weight = 0, #kg
+                 Energy = 0, #J
+                 DevelAge = 0): #day
+        '''Creating a consumer individual'''
+        #Weight when maturity is reached or potential maximal weight
+        self.AdultWeight = AdultWeight
+        #The current weight of an individual
+        self.Weight = Weight
+        # m0 (start weight): egg size for young
+        self.InitialWeight = Weight
+        #Energy reservoir for BMR, dispersion, growth and reproduction
+        self.Energy = Energy
+        # an individual's neutral marker for determining origin of variation
+        self.neutral = neutral
+        #an individuals developmental age according to the growth curve of West et al. (2001)
+        self.DevelAge = DevelAge
+        #Neutral gene used to calculte Fst value
+        self.gene_fst=Gene_Fst
+        #time of introduction, immigration or birth
+        self.t=t
+        
+
+         
+    def ConsumeCI(self, TimeC, Assim_Frac=1, Res= 1, Sum=1):
+        '''Replenish an individual's energy reservoir with a
+           fraction of the consumed energy'''     
+        #Ingestation rate (Watts) of carnivorous poikilotherms
+        #(carnivorous, copepods, benthic detrivores): 
+        #2W ^ 0.80 (Peters 1983) 
+        return Assim_Frac * TimeC *2.0 * (self.Weight**0.80)*(Res/Sum)
+
+
+    def BMR_Move_CI(self,SP,TimeD,y,x,grid,p):
+        '''Expenditure of energy on daily basal metabolism
+        Returning an array of foraging area or 'Death' or 'No' (in case an individual does not move).
+        This function is written for a squared landscape!!!'''
+        
+        #Basal metabolic rate: 0.14W ^ 0.751 (Peters 1983) [J/s]        
+        #Energy expended on basal metabolic processes throughout the entire day
+        #Cost of movement already includes cost of BMR
+        BMRDay =  0.14 * (self.Weight**0.751) *24 * 3600#[J/day]
+        
+        #Energy for basal metabolic processes extracted from energy reservoir
+        self.Energy -= BMRDay
+        if self.Energy <0:
+            return 'Death'
+        if rnd.random()<p:
+            #Cost of movement(J/s): 0.17W (kg) ^ 0.75 + 3.4W (kg) (Peters 1983 p96)
+            CostPerSec =  (0.17 * (self.Weight**0.75)) + (3.4 * self.Weight) -0.14 * (self.Weight**0.751)#[J/s]
+            #determining tm: time invested in movement at day t
+            tm= self.Energy / CostPerSec  if (self.Energy / CostPerSec) <TimeD else TimeD
+            #Energy expended on movement is removed from the energy reservoir
+            self.Energy -= CostPerSec*tm   
+            #Speed of walking insects(m/s): 0.3W (kg) ^ 0.29 (Buddenbrock 1934) 
+            #dmax: total covered distance at time t
+            dmax = 0.30 * (self.Weight**0.29)*tm#[m]
+            
+            perc_range=0.096989967 + (301.0033444816 *self.Weight)#[m]
+
+            #Here, r is  the radius of a circle representing the foraging area of an individual during one day.
+            #Within this foraging area, an individual will move towards the cell with the highest amount of resources.
+            r = math.sqrt(((2*dmax*perc_range)+ (math.pi *perc_range**2))/math.pi) + rnd.uniform (-0.5*SP,0.5*SP)#[m/day]
+            
+            #When individual able to move outside patch
+            if (r/SP) > 0.5:
+                
+                #creating mask array (0: cell which will not be masked, 1: cells which will be masked)
+                #Foraging_Area (name of mask array)initially only contains 1
+                #   1) determine square of suitable cells=> these become 0
+                #   2) this square is minimized starting from the corners (cells become 1 again)
+                #    until area of unmasked cells approximates area of circle.
+                Foraging_Area = np.zeros((grid)) + 1
+                #Dimension of the landscape (landscape must be squared!!!)
+                dim=grid[0]
+                #Surface of Perfect Circle representing Foraging Area
+                Circle = math.pi * (r ** 2) #[m] 
+                #Surface of Square approximating Foraging Area
+                Surface_square = (((np.ceil((r/SP)-0.5)*2)+1)*SP) ** 2 #[m]
+                #Radius of circle expressed in number of cells 
+                l = (np.ceil((r/SP)-0.5))#[cells]         
+                
+            #3 possible cases:
+                #1)Surfaces of circle and square (representing
+                #foraging area) are smaller than total landscape surface
+                if (Circle<(dim*SP)**2) and (Surface_square<(dim*SP)**2):
+                    #Borders of the Square of Foraging Area
+                    D, U, L, R =(y-l)%dim, (y+l+1)%dim,\
+                                (x-l)%dim, (x+l+1)%dim #[coordinates]
+            
+                    #The square doesn't exceed borders of grid
+                    if D < U and L < R:
+                        Foraging_Area[D:U, L:R] = 0
+            
+                    #The square does exceed borders of grid
+                    #3 possibilities:
+                    elif D > U and L > R:
+                        Foraging_Area[D:, L:] = 0
+                        Foraging_Area[:U, L:] = 0
+                        Foraging_Area[D:, :R] = 0
+                        Foraging_Area[:U, :R] = 0
+            
+                    elif D > U:
+                        Foraging_Area[D:, L:R] = 0
+                        Foraging_Area[:U, L:R] = 0
+            
+                    else: #L<R
+                        Foraging_Area[D:U, L:] = 0
+                        Foraging_Area[D:U, :R] = 0
+            
+                    #Trying to recreate a circular foraging area  
+                    #by cutting corners of square
+                    i = 1
+                    Surface=Surface_square
+                    while Surface > Circle:
+                        Surface -= (4 * i * (SP ** 2))
+                        if Surface > Circle:
+                        #decrease the number of unmasked patches in foraging area
+                            diff=[item for item in zip(range(0,i), range(i-1,-1,-1))]
+                            for d1,d2 in diff:
+                                for tup in itertools.product([(D+d1)%dim, (U-1-d1)%dim],\
+                                                             [(L+d2)%dim, (R-1-d2)%dim]):
+                                    Foraging_Area[tup] = 1
+                        i+=1
+            
+                #2) Surface of circle (representing foraging area) is smaller
+                #than total landscape surface but square's surface exceeds it
+                elif (Circle<(dim*SP)**2) and (Surface_square>=(dim*SP)**2):
+                    #Complete foraging range is unmasked
+                    Foraging_Area -= 1
+                    #Square's surface equals landscape' s surface
+                    Surface_square = (dim*SP)**2 #[m]
+                    
+                    #Borders of the Square of Foraging Area
+                    D, U, L, R = y-l, y+l, x-l, x+l #[coordinates]
+                    
+                    #Try to recreate a circular foraging area 
+                    #by cutting the corners of square
+                    Surface_A = Surface_square
+                    A=set()
+                    i=1                 
+                    #The square is decreasing in surface up to the point where an
+                    #extra cut would result in a square which is smaller than 
+                    #the circle. As such, the surface of the square 
+                    #is never smaller than the surface of the circle!
+                    while Surface_A >= Circle:
+            
+                        B=A.copy()
+                        diff=[item for item in zip(range(0,i), range(i-1,-1,-1))]
+                        for d1,d2 in diff:
+                            for tup in itertools.product([(D+d1)%dim, (U-d1)%dim],\
+                                                         [(L+d2)%dim, (R-d2)%dim]):
+                                A.add(tup)
+    
+            
+                        Surface_A=Surface_square-(len(A)*(SP**2))
+                        i+=1           
+                        
+                    for tup in B:
+                        Foraging_Area[tup]=1
+                
+                #3) Surfaces of circle and square (representing foraging area)
+                #do exceed total landscape surface
+                else: #Circle >= (dim*SP)**2
+                    #The entire landscape is considered foraging area
+                    Foraging_Area-=1
+                
+                return Foraging_Area
+        
+            else:
+                return 'NO' #Individual does move but only within its cell.         
+        else:
+            return 'NO'
+    
+    def GrowthCI(self, 
+                 a,
+                 TimeC,
+                 AssimFrac):
+        '''Updating the actual size of an individual according to West et al. (2001)'''        
+        #Calculating the proportion of the total metabolic power/available energy devoted to growth (West et al. 2001)
+        #R = (1 - r) =  1 - (m/M) ^0.25        
+        #Threshold for growth = a proportion R of the maximum amount of energy that an individual can ingest in one day 
+        R=(1-(self.Weight/self.AdultWeight)**0.25)
+        DeltaGrowth = self.Energy / ( R*AssimFrac * 2.0 * (self.Weight**0.80) * TimeC)#[J]
+        
+        if DeltaGrowth > 1:DeltaGrowth=1
+        #energy used for growth is deleted from storage
+        self.Energy -= (DeltaGrowth*R * AssimFrac * 2.0 * (self.Weight**0.80) * TimeC)
+        #organism grows    
+        self.DevelAge += DeltaGrowth 
+        # m = M * {1 - [1 - (m0 / M) ^ 1/4] * e ^ [ -at / (4M) ^ 1/4]} ^ 4 
+        #(West et al. 2001) with weights expressed in gram
+        #term1 : (m0 / M) ^ 1/4
+        #term2 : e ^ [ -at / 4 * (M) ^ 1/4]
+        # m = M * {1 - [1 - term1] * term2 } ^ 4
+        self.Weight = ((self.AdultWeight*1000) * (
+                                                  (1 - 
+                                                   ((1 - (self.InitialWeight*1000/(self.AdultWeight*1000))**(0.25) )
+                                                     * math.exp((-a * self.DevelAge) /(4 * ((self.AdultWeight*1000)**(0.25))))
+                                                     )) ** 4))/1000#[kg]        
+        
+
+    
+    def MatureCI(self, NumberofEggs, TimeC, TimeD, AssimFrac):
+        '''checking whether an individual has reached maturity'''
+        if not self.Weight >= 0.99 * self.AdultWeight:
+            return False
+        
+        #Clutch size for aquatic poikilotherms:
+        #0.158W ^ 0.92 (RECALCULATED from Blueweiss et al. 1978)
+        ClutchSize = 0.158 * (self.Weight ** 0.92)#[kg]
+        
+        #Energy per kilogram of insect
+        EnergyKgInsect = 7000000#[J/kg]
+        
+        #Weight of individual egg
+        self.EggSize = ClutchSize / NumberofEggs#[kg]
+        
+        #Amount of energy given to egg for survival of its first day:
+        #Basal metabolic processes Cost + Total Movement Cost + Cost devoted to Growth
+        self.EggEnergy = ((0.14 * (self.EggSize**0.751)) * ((24 * 3600) - TimeD)) + \
+            ((0.17 * (self.EggSize**0.75) + (3.4 * self.EggSize))* TimeD) + \
+            ((1 - ((self.EggSize/self.AdultWeight)**0.25)) * \
+            (AssimFrac * (2.0 * (self.EggSize**0.80)) * TimeC))#[J]
+        
+        #Threshold for reproduction: Amount of Energy necessary for clutch + 
+        #Amount of Energy for every egg to survive one day 
+        self.ThresholdR =(ClutchSize * EnergyKgInsect) + (NumberofEggs * self.EggEnergy)#[J]
+        return True
+        
+    
+    
+    def ReproduceCI(self, NumberOfEggs, MinWeight, MaxWeight, Mutationrate, TimeC, t):
+        '''Returns list of offspring in case an individual has gathered enough energy to produce it. '''
+        if self.Energy >= self.ThresholdR:
+            Offspring, neutral = [], self.neutral
+            #create total number of eggs
+            for _ in range(NumberOfEggs):
+                #mutation rate
+                if rnd.random() < Mutationrate:                 
+                    NewAdultWeight= self.AdultWeight + rnd.uniform(-0.5*self.AdultWeight, 0.5*self.AdultWeight)
+                    neutral= 'mutation'
+                    if NewAdultWeight<max(self.EggSize,(10**MinWeight)):
+                        NewAdultWeight=max(self.EggSize,(10**MinWeight))   
+                    elif NewAdultWeight> (10**MaxWeight):
+                        NewAdultWeight= (10**MaxWeight)                                                         
+                else:
+                    NewAdultWeight=self.AdultWeight
+                    
+                if rnd.random() < 0.0001:
+                    Gene_Fst=rnd.randint(0,999)
+                else: Gene_Fst= self.gene_fst
+                #create new larvae in population
+                egg=ConInd(#variation in maximum size of consumer
+                        NewAdultWeight, 
+                        neutral,
+                        Gene_Fst,
+                        t,
+                        Weight = self.EggSize,
+                        Energy = self.EggEnergy
+                        )
+                Offspring.append(egg)
+            sumimax= NumberOfEggs *egg.ConsumeCI(TimeC)
+            return sumimax, Offspring
+        else: return None       
+        
+class ConSpec: 
+    def __init__(self, 
+                 Startpop,
+                 MinWeight,
+                 MaxWeight,
+                 TimeC,
+                 TimeD,
+                 AssimFrac,
+                 landscape,
+                 grid,
+                 NumberofEggs,
+                 Resource,
+                 t):
+        '''Initializing a consumer species'''
+        self.landscape = landscape        
+        self.MinWeight = MinWeight 
+        self.MaxWeight = MaxWeight
+        self.TimeC = TimeC
+        self.TimeD = TimeD  
+        self.AssimFrac = AssimFrac
+        self.totaladults = Startpop
+        self.totallarvae = 0
+        self.grid=grid
+        self.NumberofEggs= NumberofEggs
+        #empty dictionary with individual lists for adults and larvae
+        self.ConDist = {'Adults': [[
+            [] for _ in line]
+            for line in self.landscape],
+            'Larvae': [[
+            []  for _ in line]
+            for line in self.landscape]
+            }
+        
+        self.sumimax=np.zeros(grid, dtype = np.float) 
+                
+        #add initial amount of consumers at random places in the grid
+        for _ in range(Startpop):
+            
+            #Initial variation
+            AdultWeight =(10**(rnd.uniform(self.MinWeight, self.MaxWeight)))
+            Gene_Fst=rnd.randint(0,999)
+            y = rnd.randint(0,grid[0] - 1)#randint: boundaries included => -1
+            x = rnd.randint(0,grid[1] - 1)
+            
+            #no consumers should be introduced in non-suitable cells
+            while self.landscape[y, x] == 0:
+                y = rnd.randint(0,grid[0] - 1)
+                x = rnd.randint(0,grid[1] - 1)
+                
+            
+            #add individual adult to list 
+            EnergyCon = (((0.14 * (AdultWeight**0.751)) * ((24 * 3600) - self.TimeD)) + \
+            ((0.17 * (AdultWeight**0.75) + (3.4 * AdultWeight)) * self.TimeD))
+            NewInd=ConInd(AdultWeight,'OriginalPop',Gene_Fst,t, Weight = AdultWeight,Energy= EnergyCon, DevelAge = 'startpop') 
+            NewInd.MatureCI(self.NumberofEggs, TimeC, TimeD, AssimFrac)                         
+            self.ConDist['Adults'][y][x].append(NewInd)
+            self.sumimax[y,x]+=NewInd.ConsumeCI(self.TimeC)
+            
+        '''Going over all individuals and letting them consume with maximum
+        ingestion rate depending on an individual's size. Competition is scramble.'''
+        # every consumer has the chance to consume every time step
+        #only consumption in suitable patches with consumers    
+        for y in range(self.grid[0]):
+            for x in range(self.grid[1]):                
+                if self.landscape[y,x]==1  and self.sumimax[y,x]>0:
+                    #scramble competition
+                    AmResLeft = Resource.ResDist[y, x]#J
+                    Sumimax=self.sumimax[y,x] 
+                    #When AmresLeft>=Sumimax, all individuals are able to eat
+                    if AmResLeft >= Sumimax:
+                        AmResLeft, Sumimax= 1,1
+                    
+                    for indiv in self.ConDist['Adults'][y][x]:
+                        indiv.Energy += indiv.ConsumeCI(self.TimeC, Assim_Frac= self.AssimFrac,
+                                                        Sum=Sumimax, Res=AmResLeft)
+                        
+        Resource.ResDist -= self.sumimax    
+        np.place(Resource.ResDist, Resource.ResDist<0, 0)
+                          
+
+    def New_consumer(self, t):
+        
+        '''Introduction of single consumer every 10 time steps'''
+        #Initial variation
+        AdultWeight = (10**(rnd.uniform(self.MinWeight, self.MaxWeight)))
+        Gene_Fst=rnd.randint(0,999)
+        x = rnd.randint(0,self.grid[1] - 1)#randint: boundaries included => -1
+        y = rnd.randint(0,self.grid[0] - 1)
+        
+        #no consumers should be introduced in non-suitable cells
+        while self.landscape[y, x] == 0:
+            x = rnd.randint(0,self.grid[1] - 1)
+            y = rnd.randint(0,self.grid[0] - 1)
+        
+        #Energy level sufficient to survive a full day
+        EnergyCon = (((0.14 * (AdultWeight**0.751)) * ((24 * 3600) - self.TimeD)) + \
+                    ((0.17 * (AdultWeight**0.75) + (3.4 * AdultWeight)) * self.TimeD))
+        
+        #add individual adult to list      
+        NewInd=ConInd(AdultWeight,'immigrant', Gene_Fst, t, Weight = AdultWeight,Energy = EnergyCon,DevelAge = 'intro')
+        NewInd.MatureCI(self.NumberofEggs, self.TimeC, self.TimeD, self.AssimFrac)                   
+        self.ConDist['Adults'][y][x].append(NewInd)
+        self.sumimax[y,x]+=NewInd.ConsumeCI(self.TimeC)
+                    
+    def BMR_Move_CS(self, SizePatch, ResDist, locations, id_set):
+        '''Managing all individual's expenditure on basal metabolism''' 
+        '''Going over all individuals and letting them move randomly but INFORMED. 
+        The movement distance is dependent on an individual's size.'''
+        
+        new_pop = {'Adults': [[
+            [] for _ in line]
+            for line in self.landscape],
+            'Larvae': [[
+            []  for _ in line]
+            for line in self.landscape]
+            }
+
+        for y in range(0, self.grid[0]):
+            for x in range(0, self.grid[1]):                    
+                if len(self.ConDist['Larvae'][y][x])>0 or len(self.ConDist['Adults'][y][x])>0:
+                    #Calculating probability of leaving cell
+                    assert (self.sumimax[y,x]>0), 'self.sumimax negative'
+                    p= 1- (ResDist[y,x]/self.sumimax[y,x])
+                    for lifestage in self.ConDist:
+                        for indiv in self.ConDist[lifestage][y][x]:                         
+                            #check for enough energy to move & cost of BMR
+                            ForArea = indiv.BMR_Move_CI(SizePatch,self.TimeD,y,x,self.grid, p)
+                            if ForArea != 'Death':
+                                if ForArea == 'NO':
+                                    #individual stays in same patch
+                                    new_pop[lifestage][y][x].append(indiv)
+                                    if str(id(indiv))+ str(indiv.t) in id_set: 
+                                        locations[str(id(indiv))+ str(indiv.t)].append((y,x))
+                                
+                                else:
+                                    #uninformed movement
+                                    (new_y, new_x) = np.ma.where(ForArea == 0)
+                                    
+                                    
+                                    #select random patch out of all suitable patches
+                                    value = rnd.choice(range(len(new_y)))
+                                        
+                                    #consumer moves to random patch and doesn't die
+                                    new_pop[lifestage][new_y[value]][new_x[value]].append(indiv)
+
+                                    
+                                    if str(id(indiv))+ str(indiv.t) in id_set:
+                                        locations[str(id(indiv))+ str(indiv.t)].append((new_y[value],new_x[value]))
+                            
+                            else:
+                                if str(id(indiv))+ str(indiv.t)in id_set:
+                                    id_set.remove(str(id(indiv))+ str(indiv.t))
+                                    locations[str(id(indiv))+ str(indiv.t)].append('D' + ' ' + str(indiv.AdultWeight))
+                                    
+
+        self.ConDist = new_pop
+        self.sumimax*=0
+
+    def Growth_Mature_Reprod_Cons_CS(self, a, Mutationrate, Resource,id_set,locations, sampling, t):
+        '''Only larvae can grow if they have enough available energy'''
+        '''Those Larvae which approach (99%) of their adult size become mature
+        and do no longer grow but invest their energy in reproduction.'''
+        #Adults no longer grow
+        #create new list for population after maturation
+        new_pop = {'Adults': [[
+            [] for _ in line]
+            for line in self.landscape],
+            'Larvae': [[
+            []  for _ in line]
+            for line in self.landscape]
+            }
+ 
+        if sampling:
+            all_eggs=[]
+            
+        for y in range(0, self.grid[0]):
+            for x in range(0, self.grid[1]):
+                for indiv in self.ConDist['Larvae'][y][x]:
+                    # larvae grow and mature
+                    if indiv.Energy > 0:
+                        indiv.GrowthCI(a, self.TimeC, self.AssimFrac)
+                        #when larva is mature, add it to the adult population 
+                        if indiv.MatureCI(self.NumberofEggs, self.TimeC, self.TimeD, self.AssimFrac):
+                            new_pop['Adults'][y][x].append(indiv)     
+                        else:  
+                            new_pop['Larvae'][y][x].append(indiv)
+                    else:  
+                            new_pop['Larvae'][y][x].append(indiv)
+                    self.sumimax[y][x]+=indiv.ConsumeCI(self.TimeC)
+                            
+                #adults reproduce in case habitat is suitable        
+                if self.landscape[y, x]!= 0:                       
+                    for indiv in self.ConDist['Adults'][y][x]:
+                        #check ability for reproduction
+                        Offspring = indiv.ReproduceCI(self.NumberofEggs, self.MinWeight, self.MaxWeight,
+                                                               Mutationrate, self.TimeC, t)                        
+                        #after reproduction, consumer dies
+                        if Offspring:
+                            self.sumimax[y][x]+=  Offspring[0]#sumimax                        
+                            new_pop['Larvae'][y][x] += Offspring[1]#list of Offspring
+                            
+                            if str(id(indiv))+ str(indiv.t) in id_set:
+                                id_set.remove(str(id(indiv))+ str(indiv.t))
+                                locations[str(id(indiv))+ str(indiv.t)].append('R'+ ' ' + str(indiv.AdultWeight))
+                            
+                            if sampling:
+                                for egg in Offspring[1]:
+                                    all_eggs.append((egg, y, x))      
+                                    
+                                                
+                        else:
+                            #not reproducing adults stay in the population
+                            new_pop['Adults'][y][x].append(indiv)
+                            self.sumimax[y][x]+=indiv.ConsumeCI(self.TimeC)
+                            
+                else:
+                    #no reproduction in non-suitable patches, so adults stay in population                    
+                    for indiv in self.ConDist['Adults'][y][x]:
+                        new_pop['Adults'][y][x].append(indiv)
+                        self.sumimax[y][x]+=indiv.ConsumeCI(self.TimeC)
+                    
+                
+                    
+                '''Going over all individuals and letting them consume with maximum
+                ingestion rate depending on an individual's size. Competition is scramble.'''
+                # every consumer has the chance to consume every time step
+                #only consumption in suitable patches with consumers
+                if (len(new_pop['Adults'][y][x])>0 or len(new_pop['Larvae'][y][x])>0):
+                    assert(self.sumimax[y,x]>0), 'problems with calculating sumimax'                    
+                if self.landscape[y,x]==1 and self.sumimax[y,x]>0:
+                    #scramble competition
+                    AmResLeft = Resource.ResDist[y, x]#J
+                    Sumimax=self.sumimax[y,x] 
+                    #When AmresLeft>=Sumimax, all individuals are able to eat
+                    if AmResLeft >= Sumimax:
+                        AmResLeft, Sumimax= 1,1
+                    
+                    for lifestage in new_pop:
+                        for indiv in new_pop[lifestage][y][x]:
+                            assert(indiv.Energy>=-0.000000000001), 'Energy negative'
+                            indiv.Energy += indiv.ConsumeCI(self.TimeC, Assim_Frac= self.AssimFrac,
+                                                            Sum=Sumimax, Res=AmResLeft)                   
+        self.ConDist = new_pop     
+                   
+        Resource.ResDist -= self.sumimax    
+        np.place(Resource.ResDist, Resource.ResDist<0, 0)                   
+        if sampling:
+            return all_eggs
+    
+    def CountingCS(self):
+        '''Going over all individuals counting the amount of adults and larvae'''
+        self.totaladults=sum([len(location)
+                                for row in self.ConDist['Adults']
+                                for location in row])
+       
+        self.totallarvae=sum([len(location)
+                                for row in self.ConDist['Larvae']
+                                for location in row])
+   
+    
+    def ListAllInd(self):
+        '''Return a list of ALL (adults and larvae) individuals.'''
+        
+        AllInd=[indiv 
+                   for lifestage in self.ConDist
+                   for row in self.ConDist[lifestage]
+                   for location in row
+                   for indiv in location
+                   ] 
+        
+        rnd.shuffle(AllInd)         
+        return AllInd
+        
+    def Summary_Weights(self, allind):
+        '''Calculate the average and its variance of the actual weight
+            and AdultWeight of ALL individuals. '''
+        
+        AdultWeights=[Ind.AdultWeight for Ind in allind]
+
+        
+        AdultWeights.sort()
+
+        
+        if len(AdultWeights)>1:
+            return (sp.describe(AdultWeights,ddof=0),#number of obs, mean, var, skewnesss, kurtosis
+                    sp.variation(AdultWeights),#coefficient of variation
+                    AdultWeights[int(round(len(AdultWeights)*0.025))],
+                    AdultWeights[int(round(len(AdultWeights)*0.975))-1])
+        
+        else:
+            return ([None]*6,None,None,None)
+                
+class Resource:
+    def __init__(self, 
+                 IniNumR,
+                 MaxAmountR,
+                 Enc,
+                 landscape):
+        '''Initiate the resource class with ResDist (a distribution of all
+        resources in the landscape)being the most important state variable.'''
+        self.landscape = landscape
+        self.mask= (self.landscape -1)**2
+        self.MaxAmountR = MaxAmountR
+        self.Enc = Enc*landscape
+        self.ResDist = IniNumR * self.landscape
+    
+    def GrowResources(self, 
+                      GrowthspeedR):
+        '''Each time step resources grow within one cell according to a
+        logistic growth function'''
+        #logistic growth of resources dN/dt = rN * (K - N / K)
+        
+        self.ResDist+=self.Enc
+        self.ResDist += (GrowthspeedR * (self.ResDist)) * ((
+                        self.MaxAmountR - self.ResDist) / (
+                        self.MaxAmountR))
+        self.ResDist-=self.Enc
+        #when no resources left, add small percentage to reinitiate growth of resources
+    
+    def MeanVarR(self):
+        '''Determine the average amount of resources within the landscape.'''
+        Resources_only = np.ma.masked_array(self.ResDist, self.mask)
+        return (np.ma.mean(Resources_only), np.ma.var(Resources_only))
+    
+    def TotalAmountR(self):
+        '''Return the entire amount of resources in the landscape.'''
+        return np.sum(self.ResDist)
+     
+class Simulation:
+    def __init__(self,Maxtime,IniNumR,GrowthspeedR,MaxAmountR,Enc,
+                 SizePatch,TimeC,TimeD,a,AssimFrac,MinWeight,
+                 MaxWeight,Mutationrate,NumberofEggs,P, H, Nrlandscape, grid):
+        '''Defining the most important variables of the simulation and 
+        defining the order of events during one day'''     
+        
+        t=0
+        Fst_lijst, O_lijst= [], []
+        
+        if P:
+            if H==0.0: H=0
+            elif H== 1.0: H=1
+            Title= 'Landscape{}-P{}-H{}'.format(Nrlandscape, int(P*100), H)
+            self.landscape= np.load(Title+ '.npy')
+            
+            Title='UID-' + Title
+            print('Nrlandscape', '\t', Nrlandscape, '\t', 'P', '\t', P, '\t', 'H', '\t', H, '\n')
+            
+        else:
+            grid, P= (5,5), 0.5
+            self.landscape=np.array([[1.0,0.0,1.0,0.0,1.0],
+                                     [0.0,1.0,0.0,1.0,0.0],
+                                     [1.0,0.0,1.0,0.0,1.0],
+                                     [0.0,1.0,0.0,1.0,0.0],
+                                     [1.0,0.0,1.0,0.0,1.0]])
+        
+
+                                            
+        Summary={'Time':[],
+                 'MeanR':[],
+                 'VarR':[],
+                 'TotalAmountR':[],
+                 'TotalAdults':[],
+                 'TotalLarvae':[],
+                 
+                 'AWeightAverage':[],
+                 'AWeightVariance':[],
+                 'AWeightSkewness':[],
+                 'AWeightKurtosis':[],
+                 'AWeightCV':[],
+                 'AWeightLower':[],
+                 'AWeightUpper':[]
+                 }
+
+        #create class resources
+        self.Resources = Resource(IniNumR, MaxAmountR, Enc, self.landscape)
+        
+        #Mean density of Startpop:2 individuals per suitable cell                          
+        Startpop = 2*int((grid[0]**2)*P)
+
+        #create consumer species 1
+        self.ConSpec1 = ConSpec(Startpop,MinWeight, MaxWeight, TimeC, TimeD,
+                                AssimFrac,self.landscape,grid, NumberofEggs, self.Resources, t) 
+        print (self.ConSpec1)  
+        #calculating alpha, beta and gamma variability
+        suitable_patches=np.where(self.landscape==1.0)
+        samples=[d for d in range (len(suitable_patches[0]))]
+        rnd.shuffle(samples)
+        variability_dict={}
+        for b in range (100):
+            variability_dict[str(suitable_patches[0][samples[b]])+\
+                             '-'+str(suitable_patches[1][samples[b]])]=[]
+            
+        samples_time_st=[Maxtime-f for f in range (0,110,10)]
+        
+        
+        #tracking 1000 individuals within the landscape during their lifetime
+        locations=dict()
+        id_set=set()
+        N_traced_eggs=0
+        samples_time_m=[Maxtime-s for s in range (300,600,10)]
+        
+         
+        while ((self.ConSpec1.totaladults + self.ConSpec1.totallarvae) > 0) and (t < Maxtime):
+            print ('Time', t) 
+            print('Adults: ',self.ConSpec1.totaladults,
+            'Larvae ',self.ConSpec1.totallarvae,
+            'Resources: ',self.Resources.MeanVarR()[0] )          
+            
+            if t%100 == 0:
+                self.ConSpec1.New_consumer(t)                      
+            self.Resources.GrowResources(GrowthspeedR) 
+            
+            sampling=False
+            #tracking 1000 individuals within the landscape during their lifetime
+            if (t in samples_time_m) and (N_traced_eggs<1000):
+                sampling=True
+            
+            
+            self.ConSpec1.BMR_Move_CS(SizePatch, self.Resources.ResDist, locations, id_set)   
+            all_eggs=self.ConSpec1.Growth_Mature_Reprod_Cons_CS(a, Mutationrate, self.Resources, id_set, locations, sampling, t) 
+            #tracking 1000 individuals within the landscape during their lifetime
+            if sampling: 
+                if len(all_eggs)>100:
+                    rnd.shuffle(all_eggs)
+                    for position in range(100):
+                        locations[str(id(all_eggs[position][0]))+str(all_eggs[position][0].t)]=[(all_eggs[position][1],all_eggs[position][2])]
+                        id_set.add(str(id(all_eggs[position][0]))+str(all_eggs[position][0].t))
+
+                    N_traced_eggs+=100
+                else: 
+                    for egg in all_eggs:
+                        locations[str(id(egg[0]))+ str(egg[0].t)]=[(egg[1],egg[2])]
+                        id_set.add(str(id(egg[0]))+ str(egg[0].t))
+                        N_traced_eggs+=1  
+                
+ 
+                        
+            #Determining number of adults and larvae in population at time t   
+            self.ConSpec1.CountingCS()      
+            
+            #Collecting data of population at time t within dictionary 'Summary'          
+            all_ind=self.ConSpec1.ListAllInd()
+            P4, PCV, PL, PU =self.ConSpec1.Summary_Weights(all_ind)
+            MeanR, VarR= self.Resources.MeanVarR()
+            Summary['Time'].append(t)
+            Summary['MeanR'].append(MeanR)
+            Summary['VarR'].append(VarR)
+            Summary['TotalAmountR'].append(self.Resources.TotalAmountR())
+            Summary['TotalAdults'].append(self.ConSpec1.totaladults)
+            Summary['TotalLarvae'].append(self.ConSpec1.totallarvae)            
+            Summary['AWeightAverage'].append(P4[2])
+            Summary['AWeightVariance'].append(P4[3])
+            Summary['AWeightSkewness'].append(P4[4])
+            Summary['AWeightKurtosis'].append(P4[5])
+            Summary['AWeightCV'].append(PCV) 
+            Summary['AWeightLower'].append(PL)
+            Summary['AWeightUpper'].append(PU)
+            t+=1
+            
+            #Writing out adult weight of 50000 individuals during simulation (checking for equilibrium)
+            #if t%2000 == 0 and 0<t<Maxtime:
+                #Write_Weights(Title,
+                              #t,
+                              #all_ind[:50000])
+                
+            if t in samples_time_st:
+                #calculating alpha, beta and gamma variability
+                for key in variability_dict.keys():
+                    coo_y, coo_x=key.split('-')
+                    variability_dict[key].append(sum([ind.Weight
+                                                       for stage in self.ConSpec1.ConDist
+                                                       for ind in self.ConSpec1.ConDist[stage][int(coo_y)][int(coo_x)]
+                                                       ]))        
+                #defining occupancy of suitable patches (O)
+                occupancy_suitable=0
+                occupancy_unsuitable=0
+                full_patches=[]
+                for y in range (grid[0]):
+                    for x in range(grid[1]):
+                        if (len(self.ConSpec1.ConDist['Larvae'][y][x])>0) or (len(self.ConSpec1.ConDist['Adults'][y][x])>0):                            
+                            full_patches.append((y,x))
+                            if self.landscape[y,x]==0:
+                                occupancy_unsuitable+=1
+                            else:
+                                occupancy_suitable+=1
+               
+                O_lijst.append(occupancy_unsuitable)
+                O_lijst.append(occupancy_suitable)
+                #calculating genetic differentation between patches within landscape (Fst)
+                #suitable_patches=np.where(self.landscape==1.0)
+                #samples=[a for a in range (len(suitable_patches[0]))]                            
+                rnd.shuffle(full_patches)            
+                w=100 if len(full_patches)>=100 else len(full_patches)
+                sample_ind_Fst=[[]for _ in range(w)]            
+                
+                for patch_number in range (w):
+                    all_ind_patch=[indiv  
+                             for stage in self.ConSpec1.ConDist 
+                             for indiv in self.ConSpec1.ConDist[stage][full_patches[patch_number][0]][full_patches[patch_number][1]]]            
+                    rnd.shuffle(all_ind_patch)            
+                    sample_ind_Fst[patch_number]=all_ind_patch[:100]
+                            
+                #calculate Fst based on sampling
+                list_haploid_div=[]
+                gene_freq_pop = np.array([0 for _ in range (1000)]) 
+    
+                for patch_number in range (w):
+                    present_alleles=set([i.gene_fst for i in sample_ind_Fst[patch_number]])
+                    gene_freq_patch= np.array([0 for _ in range (1000)]) 
+                    for allele in present_alleles:
+                        gene_freq_patch[allele]=[i.gene_fst for i in sample_ind_Fst[patch_number]].count(allele)
+                    if max(gene_freq_patch)!=0:
+                        gene_freq_pop+= gene_freq_patch
+                        gene_freq_patch= gene_freq_patch/ np.sum(gene_freq_patch)
+                        list_haploid_div.append(1-np.sum(gene_freq_patch**2))       
+                if max(gene_freq_pop)!= 0:               
+                    gene_freq_pop=gene_freq_pop/np.sum(gene_freq_pop)
+                    Ht=1-np.sum(gene_freq_pop**2)
+                    Hs=np.mean(list_haploid_div)
+                    Fst= (Ht-Hs)/Ht
+                else:
+                    Fst='No individuals sampled'
+
+                Fst_lijst.append(Fst)
+
+        Write_Files(Title,
+                    Summary,
+                    all_ind[:50000],
+                    self.Resources.ResDist,
+                    self.ConSpec1.ConDist,
+                    self.landscape,
+                    grid,
+                    [item for item in variability_dict.values()],
+                    locations,
+                    Fst_lijst,
+			O_lijst)   
+                    
+        Plot_Visual(Title,
+                    Summary, 
+                    Maxtime,
+                    MaxAmountR,
+                    all_ind)
+        
+        print ('Finished')
+
+start=timeit.default_timer()       
+#Simulate over 5 replicas of the same landscape
+#old_settings = np.seterr(all='warn')     
+Simulation(Maxtime = 19000, #day
+           #MaxAmountR>=IniNumR+Enc
+           IniNumR = 1999, #[J]
+           GrowthspeedR =0.5, #[J/s]
+           MaxAmountR = 2000, #[J]
+           Enc = 1, #[J]
+           SizePatch = 0.25,#float(sys.argv[1]), #[m] #size of patch
+           TimeC = 15 * 3600, #[s] #time spent on consumption: 15 hours/day
+           TimeD = 1 * 3600, #[s] #time spent moving: 1 hour/day
+           a = 0.2, #West et al. 2001
+           AssimFrac = 0.55, #efficiently assimilated energetic fraction of resources
+           MinWeight = -5, #exponent of 10
+           MaxWeight = -2.522878745, #exponent of 10
+           Mutationrate = 0.001, #rate of mutation at reproduction
+           NumberofEggs = 15, #amount of eggs in clutch is constant (e.g. 15)
+           P= float(sys.argv[1]),
+           H= float(sys.argv[2]),
+           Nrlandscape=  int(float(sys.argv[3])),
+           grid=(100,100))
+stop=timeit.default_timer()
+print(stop-start)
